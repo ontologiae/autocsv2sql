@@ -1,4 +1,3 @@
-(*#require "batteries";;*)
 
 open Batteries
 
@@ -100,8 +99,6 @@ let analyze_data_lines separator ic =
                          | Text -> Text)
         )
       ) typArray;
-      (*let progress = (!count * 100) / (!count + 1) in
-      print_endline ("Progress: " ^ string_of_int progress ^ "%");*)
       count := !count + 1;
     with End_of_file -> notFinished := false; close_in ic;
   done;
@@ -111,7 +108,7 @@ let analyze_data_lines separator ic =
   string -> string list -> typPsql list -> unit = <fun>*)
 
 let generate_create_table_statement table_name field_names field_types =
-  let zip = L.combine field_names field_types in
+  let zip = try L.combine field_names field_types with e -> failwith "Seems that the columns definition is not consistent with datas" in
   let field_declarations = L.map (fun (name, ftype) ->
           let nameOk = name |> remove_quotes in
     match ftype with
@@ -139,9 +136,7 @@ let generate_insert_statements file_name table_name field_names field_types sepa
         let line = input_line ic  in
         cpt := !cpt + 1;
         count := !count + 1;
-        (*Printf.eprintf "cpt=%d, nbligne=%d\n%!" (!count) nbligne;*)
         let columns = BatString.split_on_char separator line in
-        (*Printf.eprintf "Ligne : %s\n" line;*)
         let insert_values = L.map2 (fun column_ ftype ->
                 let column = column_ |> remove_quotes in
                 match ftype with
@@ -155,7 +150,6 @@ let generate_insert_statements file_name table_name field_names field_types sepa
         | 999 -> cpt := 0; Printf.printf "(%s);\n%!"   !values_str
         | _ when  !count >= (nbligne+1)  -> Printf.printf "(%s);\n%!"  !values_str
         | _   -> Printf.printf "(%s),\n%!"  !values_str 
-        (*last_line := line;*)
       done
     with End_of_file -> close_in ic
   in
@@ -173,12 +167,9 @@ let process_csv_file file_name =
     separator := get_separator first_line;
     let _ = Printf.eprintf "Separator found : %c\n%!" (!separator) in
     field_names := get_field_names first_line (!separator);
-    (*L.iter (Printf.eprintf " %s, %!") (!field_names);*)
     let field_types_, nbligne = analyze_data_lines  (!separator) ic  in
     let field_types = field_types_ |> BatArray.to_list in
-    (*L.iter (fun t -> Printf.eprintf "%s%!" (typPsqlToString t)) field_types;*)
     generate_create_table_statement nom_table !field_names field_types;
-    (*Printf.eprintf "Generating insert statements\n";*)
     generate_insert_statements file_name nom_table !field_names field_types (!separator) nbligne;
 
     close_in ic;
@@ -186,11 +177,8 @@ let process_csv_file file_name =
   | End_of_file ->
     close_in ic;
     Printf.printf "Error: Empty CSV file\n";;
-  (*| exn ->
-    Printexc.get_backtrace ();
-    close_in ic;
-    Printf.printf "Error: An error occurred while processing the CSV file\n";
-    raise exn*)
+  
+
 
 let main () =
   let usage = "usage: autocsv2sql file > sqlfile" in
@@ -202,6 +190,4 @@ let main () =
     print_endline usage
 
 let () = main ()
-(*
-let ic = open_in "ADRESSES_NM.csv";;
-let separator = ',';;*)
+

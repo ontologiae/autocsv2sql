@@ -73,7 +73,7 @@ Tu rajouteras un affichage du pourcentage de progression par rapport au nombre d
 
 let replace_non_alnum_with_underscore str =
   let is_valid_char c = BatChar.is_letter c || BatChar.is_digit c in
-  BatString.map (fun c -> if is_valid_char c then c else '_') str;;
+  Filename.basename str |> BatString.map (fun c -> if is_valid_char c then c else '_');;
 
 
 let analyze_data_lines separator ic =
@@ -151,7 +151,9 @@ let generate_insert_statements file_name table_name field_names field_types sepa
         | _ when  !count >= (nbligne+1)  -> Printf.printf "(%s);\n%!"  !values_str
         | _   -> Printf.printf "(%s),\n%!"  !values_str 
       done
-    with End_of_file -> close_in ic
+    with 
+    | End_of_file -> close_in ic
+    | _ -> Printf.eprintf "Erreur sur la ligne : %s\n%!" (!values_str)
   in
   read_lines ();;
 

@@ -1,4 +1,3 @@
-
 open Batteries
 
 module L = BatList;;
@@ -159,7 +158,7 @@ let generate_insert_statements file_name table_name field_names field_types sepa
 
 
 
-let process_csv_file file_name =
+let process_csv_file file_name insert_only =
   let ic = open_in file_name in
   let separator = ref ',' in
   let field_names = ref [] in
@@ -171,7 +170,7 @@ let process_csv_file file_name =
     field_names := get_field_names first_line (!separator);
     let field_types_, nbligne = analyze_data_lines  (!separator) ic  in
     let field_types = field_types_ |> BatArray.to_list in
-    generate_create_table_statement nom_table !field_names field_types;
+    if not insert_only then generate_create_table_statement nom_table !field_names field_types;
     generate_insert_statements file_name nom_table !field_names field_types (!separator) nbligne;
 
     close_in ic;
@@ -179,17 +178,57 @@ let process_csv_file file_name =
   | End_of_file ->
     close_in ic;
     Printf.printf "Error: Empty CSV file\n";;
-  
+
+
+let copy_with_psql file_name insert_only =
+  let ic = open_in file_name in
+  let separator = ref ',' in
+  let field_names = ref [] in
+  let nom_table = replace_non_alnum_with_underscore file_name in
+  try
+    let first_line = input_line ic in
+    separator := get_separator first_line;
+    let _ = Printf.eprintf "Separator found : %c\n%!" (!separator) in
+    field_names := get_field_names first_line (!separator);
+    let field_types_, nbligne = analyze_data_lines  (!separator) ic  in
+    let field_types = field_types_ |> BatArray.to_list in
+    if not insert_only then generate_create_table_statement nom_table !field_names field_types;
+	(*génération de l'instruction copy*)
+    let p = Printf.printf "COPY %s(%s) FROM '%s' DELIMITER '%s' CSV HEADER;\n%!" in
+    p nom_table (BatString.join "," !field_names) file_name (BatString.of_char !separator) ;
+   close_in ic;
+  with
+  | End_of_file ->
+    close_in ic;
+    Printf.printf "Error: Empty CSV file\n";;
 
 
 let main () =
-  let usage = "usage: autocsv2sql file > sqlfile" in
-  match Array.length Sys.argv with
-  | 2 -> (* Argument nom du fichier présent *)
-    let file_name = Sys.argv.(1) in
-    process_csv_file file_name
-  | _ ->
-    print_endline usage
+ if (Array.length Sys.argv == 2 && (BatString.count_string Sys.argv.(1) "--" > 0) ) || Array.length Sys.argv < 2 then
+	 begin 
+		print_endline "usage: autocsv2sql file [--insert-only] [--copy-psql] > sqlfile"; exit 0; 
+	 end;
+ match Sys.argv with
+	 | [| _; "--help" |] | [| _; "-h" |] ->
+	 print_endline "usage: autocsv2sql file [--insert-only] [--copy-psql] > sqlfile"
+	 | argv ->
+		 let file_name = ref "" in
+		 let insert_only = ref false in
+		 let copy_psql = ref false in
+		 Array.iter (fun arg ->
+			 match arg with
+			 | "--insert-only" -> insert_only := true
+			 | "--copy-psql"   -> copy_psql := true
+			 | _ when BatString.count_string arg "--" == 0 -> file_name := arg
+			 (*| _ when !(insert_only) -> print_endline "Argument inconnu"*)
+			 | _ -> ()
+		    ) argv;
+		 if !file_name <> "" then begin
+			if !copy_psql then copy_with_psql !file_name !insert_only
+			else process_csv_file !file_name !insert_only;
+	 		end
+	 	else
+		 print_endline "usage: autocsv2sql file [--insert-only] [--copy-psql] > sqlfile";;
 
 let () = main ()
 
